@@ -1,0 +1,46 @@
+Bloom-OS — Custom Open License (Non-Commercial)
+
+Copyright (c) Savva Poliakov. All original source code, documentation, and
+associated files in this repository (the "Software") are the property of
+the original author, Savva Poliakov, unless otherwise noted.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this Software and associated documentation files, to deal in the
+Software under the following terms:
+
+1. PERMITTED USES
+   - You are free to use, copy, study, and modify the Software for any
+     purpose, including personal, educational, and commercial internal use.
+   - You are free to redistribute the Software, or modified versions of
+     it, provided that such redistribution is done FREE OF CHARGE.
+   - You must retain this license text and clear attribution to the
+     original author, Savva Poliakov, in all copies or substantial
+     portions of the Software, including modified versions.
+
+2. PROHIBITED USES
+   - You may NOT sell the Software, in original or modified form, nor may
+     you charge any fee for access to, distribution of, or use of the
+     Software or any derivative work based on it.
+   - You may NOT incorporate the Software into a commercial product or
+     service that is sold or offered for a fee, whether as a whole or in
+     part.
+
+3. ATTRIBUTION
+   - Any distribution, modification, or derivative work must clearly
+     credit the original author, Savva Poliakov, and indicate that the
+     project's original codebase originates from this repository.
+   - Any public release or redistribution should note that development of
+     this project was assisted by AI (Anthropic's Claude).
+
+4. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+   THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. TERMINATION
+   Any use in violation of Section 2 (Prohibited Uses) automatically
+   terminates the rights granted under this license for the violating
+   party.
