@@ -6,6 +6,13 @@
 static UINT32 *FrameBuffer;
 static UINT32 PixelsPerScanLine;
 
+static EFI_LOADED_IMAGE *LoadedImage;
+static EFI_FILE_HANDLE RootDir;
+static EFI_FILE_HANDLE KernelFile;
+static EFI_FILE_INFO *KernelInfo;
+static VOID *KernelBuffer;
+static UINTN KernelSize;
+
 static INT32
 InSegment(INT32 Dx, INT32 Dy, INT32 Index)
 {
@@ -70,16 +77,63 @@ DrawLogo(UINT32 ScreenWidth, UINT32 ScreenHeight)
 typedef struct {
     CHAR16 *Name;
     INT32 Success;
+    EFI_STATUS Status;
 } BOOT_STAGE_RESULT;
 
 static BOOT_STAGE_RESULT
-RunStage(INT32 StageIndex)
+RunStage(INT32 StageIndex, EFI_HANDLE ImageHandle)
 {
     BOOT_STAGE_RESULT Result;
-    Result.Name = L"Stage";
     Result.Success = 1;
+    Result.Status = EFI_SUCCESS;
 
-    uefi_call_wrapper(BS->Stall, 1, 150000);
+    switch (StageIndex) {
+
+    case 0:
+        Result.Name = L"Locate loaded image info";
+        Result.Status = uefi_call_wrapper(BS->HandleProtocol, 3, ImageHandle,
+            &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
+        break;
+
+    case 1:
+        Result.Name = L"Open root directory";
+        RootDir = LibOpenRoot(LoadedImage->DeviceHandle);
+        if (RootDir == NULL) {
+            Result.Status = EFI_NOT_FOUND;
+        }
+        break;
+
+    case 2:
+        Result.Name = L"Open kernel file";
+        Result.Status = uefi_call_wrapper(RootDir->Open, 5, RootDir, &KernelFile,
+            L"KERNEL.BIN", EFI_FILE_MODE_READ, 0);
+        break;
+
+    case 3:
+        Result.Name = L"Read kernel into memory";
+        KernelInfo = LibFileInfo(KernelFile);
+        if (KernelInfo == NULL) {
+            Result.Status = EFI_NOT_FOUND;
+            break;
+        }
+        KernelSize = KernelInfo->FileSize;
+        Result.Status = uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, KernelSize, &KernelBuffer);
+        if (EFI_ERROR(Result.Status)) {
+            break;
+        }
+        Result.Status = uefi_call_wrapper(KernelFile->Read, 3, KernelFile, &KernelSize, KernelBuffer);
+        break;
+
+    default:
+        Result.Name = L"Unknown stage";
+        break;
+    }
+
+    if (EFI_ERROR(Result.Status)) {
+        Result.Success = 0;
+    }
+
+    uefi_call_wrapper(BS->Stall, 1, 300000);
 
     return Result;
 }
@@ -121,22 +175,20 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     DrawLogo(ScreenWidth, ScreenHeight);
     DrawRing(CenterX, CenterY, 0, -1);
 
-    INT32 ErrorStage = -1;
-
     for (INT32 Stage = 0; Stage < RING_SEGMENTS; Stage++) {
-        BOOT_STAGE_RESULT Result = RunStage(Stage);
+        BOOT_STAGE_RESULT Result = RunStage(Stage, ImageHandle);
 
         if (!Result.Success) {
-            ErrorStage = Stage;
-            DrawRing(CenterX, CenterY, Stage, ErrorStage);
-            Print(L"Boot stage %d failed.\r\n", Stage);
+            DrawRing(CenterX, CenterY, Stage, Stage);
+            Print(L"Boot stage failed: %s (%r)\r\n", Result.Name, Result.Status);
             goto hang;
         }
 
+        Print(L"Stage OK: %s\r\n", Result.Name);
         DrawRing(CenterX, CenterY, Stage + 1, -1);
     }
 
-    Print(L"Boot stages complete.\r\n");
+    Print(L"Boot stages complete. Kernel size: %d bytes\r\n", KernelSize);
 
 hang:
     while (1) {
