@@ -1,5 +1,7 @@
 # Bloom-OS
 
+![Bloom-OS logo](assets/icon.png)
+
 A hobby operating system built entirely from scratch — custom UEFI bootloader, custom kernel, no existing bootloaders or kernels used as a base. Developed as an open, educational OSDev-style project.
 
 ## About
