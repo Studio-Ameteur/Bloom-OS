@@ -2,6 +2,7 @@
 #include <efilib.h>
 #include "logo.h"
 #include "ring.h"
+#include "boot_info.h"
 
 static UINT32 *FrameBuffer;
 static UINT32 PixelsPerScanLine;
@@ -10,7 +11,6 @@ static EFI_LOADED_IMAGE *LoadedImage;
 static EFI_FILE_HANDLE RootDir;
 static EFI_FILE_HANDLE KernelFile;
 static EFI_FILE_INFO *KernelInfo;
-static VOID *KernelBuffer;
 static UINTN KernelSize;
 
 static INT32
@@ -109,20 +109,27 @@ RunStage(INT32 StageIndex, EFI_HANDLE ImageHandle)
             L"KERNEL.BIN", EFI_FILE_MODE_READ, 0);
         break;
 
-    case 3:
-        Result.Name = L"Read kernel into memory";
+    case 3: {
+        Result.Name = L"Load kernel at fixed address";
         KernelInfo = LibFileInfo(KernelFile);
         if (KernelInfo == NULL) {
             Result.Status = EFI_NOT_FOUND;
             break;
         }
         KernelSize = KernelInfo->FileSize;
-        Result.Status = uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, KernelSize, &KernelBuffer);
+
+        EFI_PHYSICAL_ADDRESS Addr = KERNEL_LOAD_ADDRESS;
+        UINTN Pages = (KernelSize + 0xFFF) / 0x1000;
+
+        Result.Status = uefi_call_wrapper(BS->AllocatePages, 4,
+            AllocateAddress, EfiLoaderData, Pages, &Addr);
         if (EFI_ERROR(Result.Status)) {
             break;
         }
-        Result.Status = uefi_call_wrapper(KernelFile->Read, 3, KernelFile, &KernelSize, KernelBuffer);
+
+        Result.Status = uefi_call_wrapper(KernelFile->Read, 3, KernelFile, &KernelSize, (VOID *)(UINTN)Addr);
         break;
+    }
 
     default:
         Result.Name = L"Unknown stage";
@@ -137,6 +144,8 @@ RunStage(INT32 StageIndex, EFI_HANDLE ImageHandle)
 
     return Result;
 }
+
+typedef void (*KERNEL_ENTRY)(BOOT_INFO *);
 
 EFI_STATUS
 EFIAPI
@@ -189,6 +198,40 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     }
 
     Print(L"Boot stages complete. Kernel size: %d bytes\r\n", KernelSize);
+
+    static BOOT_INFO Info;
+    Info.FrameBufferBase = Gop->Mode->FrameBufferBase;
+    Info.FrameBufferSize = Gop->Mode->FrameBufferSize;
+    Info.Width = ScreenWidth;
+    Info.Height = ScreenHeight;
+    Info.PixelsPerScanLine = PixelsPerScanLine;
+
+    UINTN MemMapSize = 0;
+    EFI_MEMORY_DESCRIPTOR *MemMap = NULL;
+    UINTN MapKey = 0;
+    UINTN DescriptorSize = 0;
+    UINT32 DescriptorVersion = 0;
+
+    uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+    MemMapSize += DescriptorSize * 4;
+    uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, MemMapSize, (void **)&MemMap);
+    Status = uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+    if (EFI_ERROR(Status)) {
+        Print(L"GetMemoryMap failed: %r\r\n", Status);
+        goto hang;
+    }
+
+    Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
+    if (EFI_ERROR(Status)) {
+        uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+        Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
+        if (EFI_ERROR(Status)) {
+            goto hang;
+        }
+    }
+
+    KERNEL_ENTRY KernelMain = (KERNEL_ENTRY)(UINTN)KERNEL_LOAD_ADDRESS;
+    KernelMain(&Info);
 
 hang:
     while (1) {
