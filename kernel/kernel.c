@@ -92,11 +92,24 @@ PlayTone(uint32_t frequency, uint64_t duration)
 }
 
 static void
+Rest(uint64_t duration)
+{
+    Delay(duration);
+}
+
+static void
 PlayStartupChime(void)
 {
-    PlayTone(523, 6000000);
-    PlayTone(659, 6000000);
-    PlayTone(784, 10000000);
+    PlayTone(523, 4000000);
+    Rest(1000000);
+
+    PlayTone(659, 4000000);
+    Rest(1000000);
+
+    PlayTone(784, 5000000);
+    Rest(2000000);
+
+    PlayTone(1047, 12000000);
 }
 
 void
