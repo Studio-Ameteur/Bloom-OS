@@ -4,6 +4,7 @@
 #include "logo.h"
 #include "idt.h"
 #include "keyboard.h"
+#include "mouse.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -14,6 +15,12 @@ static void
 PutPixel(uint32_t x, uint32_t y, uint32_t color)
 {
     FrameBuffer[y * Stride + x] = color;
+}
+
+static uint32_t
+GetPixel(uint32_t x, uint32_t y)
+{
+    return FrameBuffer[y * Stride + x];
 }
 
 static void
@@ -66,6 +73,49 @@ FillRect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color)
     for (uint32_t row = 0; row < h; row++) {
         for (uint32_t col = 0; col < w; col++) {
             PutPixel(x + col, y + row, color);
+        }
+    }
+}
+
+#define CURSOR_WIDTH 8
+#define CURSOR_HEIGHT 14
+
+static const uint8_t CursorBitmap[CURSOR_HEIGHT] = {
+    0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFF,
+    0xF8, 0xD8, 0x8C, 0x0C, 0x06, 0x06
+};
+
+static uint32_t CursorSaved[CURSOR_WIDTH * CURSOR_HEIGHT];
+
+static void
+DrawCursor(uint32_t x, uint32_t y, uint32_t color)
+{
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        uint8_t Bits = CursorBitmap[row];
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            if (Bits & (1 << (7 - col))) {
+                PutPixel(x + col, y + row, color);
+            }
+        }
+    }
+}
+
+static void
+SaveUnderCursor(uint32_t x, uint32_t y)
+{
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            CursorSaved[row * CURSOR_WIDTH + col] = GetPixel(x + col, y + row);
+        }
+    }
+}
+
+static void
+RestoreUnderCursor(uint32_t x, uint32_t y)
+{
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            PutPixel(x + col, y + row, CursorSaved[row * CURSOR_WIDTH + col]);
         }
     }
 }
@@ -163,6 +213,7 @@ kmain(BOOT_INFO *Info)
 {
     InitIdt();
     InitKeyboard();
+    InitMouse();
     EnableInterrupts();
 
     FrameBuffer = (volatile uint32_t *)Info->FrameBufferBase;
@@ -203,42 +254,84 @@ kmain(BOOT_INFO *Info)
     static uint32_t LineEndX[MAX_LINES];
     int CurrentLine = 0;
 
+    uint32_t MouseCursorX = ScreenWidth / 2;
+    uint32_t MouseCursorY = ScreenHeight / 2;
+    uint32_t CursorColor = 0x00FFFFFF;
+
+    SaveUnderCursor(MouseCursorX, MouseCursorY);
+    DrawCursor(MouseCursorX, MouseCursorY, CursorColor);
+
     for (;;) {
+        int GotEvent = 0;
         char c = KeyboardGetChar();
 
-        if (c == 0) {
-            __asm__ __volatile__("hlt");
-            continue;
-        }
+        if (c != 0) {
+            GotEvent = 1;
 
-        if (c == '\b') {
-            if (CursorX > Margin) {
-                CursorX -= FONT_WIDTH;
-                FillRect(CursorX, CursorY, FONT_WIDTH, FONT_HEIGHT, BackgroundColor);
-            } else if (CurrentLine > 0) {
-                CurrentLine--;
-                CursorY -= FONT_HEIGHT + LineSpacing;
-                CursorX = LineEndX[CurrentLine];
-            }
-        } else if (c == '\n') {
-            if (CurrentLine < MAX_LINES - 1) {
-                LineEndX[CurrentLine] = CursorX;
-                CurrentLine++;
-            }
-            CursorX = Margin;
-            CursorY += FONT_HEIGHT + LineSpacing;
-        } else {
-            DrawChar(CursorX, CursorY, c, TextColor);
-            CursorX += FONT_WIDTH;
-
-            if (CursorX + FONT_WIDTH > ScreenWidth - Margin) {
+            if (c == '\b') {
+                if (CursorX > Margin) {
+                    CursorX -= FONT_WIDTH;
+                    FillRect(CursorX, CursorY, FONT_WIDTH, FONT_HEIGHT, BackgroundColor);
+                } else if (CurrentLine > 0) {
+                    CurrentLine--;
+                    CursorY -= FONT_HEIGHT + LineSpacing;
+                    CursorX = LineEndX[CurrentLine];
+                }
+            } else if (c == '\n') {
                 if (CurrentLine < MAX_LINES - 1) {
                     LineEndX[CurrentLine] = CursorX;
                     CurrentLine++;
                 }
                 CursorX = Margin;
                 CursorY += FONT_HEIGHT + LineSpacing;
+            } else {
+                DrawChar(CursorX, CursorY, c, TextColor);
+                CursorX += FONT_WIDTH;
+
+                if (CursorX + FONT_WIDTH > ScreenWidth - Margin) {
+                    if (CurrentLine < MAX_LINES - 1) {
+                        LineEndX[CurrentLine] = CursorX;
+                        CurrentLine++;
+                    }
+                    CursorX = Margin;
+                    CursorY += FONT_HEIGHT + LineSpacing;
+                }
             }
+        }
+
+        int Dx, Dy;
+        uint8_t Buttons;
+
+        if (MouseGetDelta(&Dx, &Dy, &Buttons)) {
+            GotEvent = 1;
+
+            RestoreUnderCursor(MouseCursorX, MouseCursorY);
+
+            int NewX = (int)MouseCursorX + Dx;
+            int NewY = (int)MouseCursorY - Dy;
+
+            if (NewX < 0) {
+                NewX = 0;
+            }
+            if (NewX > (int)ScreenWidth - CURSOR_WIDTH) {
+                NewX = ScreenWidth - CURSOR_WIDTH;
+            }
+            if (NewY < 0) {
+                NewY = 0;
+            }
+            if (NewY > (int)ScreenHeight - CURSOR_HEIGHT) {
+                NewY = ScreenHeight - CURSOR_HEIGHT;
+            }
+
+            MouseCursorX = NewX;
+            MouseCursorY = NewY;
+
+            SaveUnderCursor(MouseCursorX, MouseCursorY);
+            DrawCursor(MouseCursorX, MouseCursorY, CursorColor);
+        }
+
+        if (!GotEvent) {
+            __asm__ __volatile__("hlt");
         }
     }
 }
