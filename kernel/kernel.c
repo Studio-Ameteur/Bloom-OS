@@ -84,9 +84,9 @@ InB(uint16_t port)
 }
 
 static void
-PlayTone(uint32_t frequency, uint64_t duration)
+PlayPhrase(const uint32_t *Freqs, const uint64_t *Durations, int Count)
 {
-    uint32_t Divisor = 1193180 / frequency;
+    uint32_t Divisor = 1193180 / Freqs[0];
 
     OutB(0x43, 0xB6);
     OutB(0x42, (uint8_t)(Divisor & 0xFF));
@@ -95,25 +95,56 @@ PlayTone(uint32_t frequency, uint64_t duration)
     uint8_t Tmp = InB(0x61);
     OutB(0x61, Tmp | 0x03);
 
-    Sleep(duration);
+    for (int i = 0; i < Count; i++) {
+        int Steps = 6;
+        uint32_t StartFreq = Freqs[i];
+        uint32_t EndFreq = (i + 1 < Count) ? Freqs[i + 1] : Freqs[i];
+        uint64_t StepDuration = Durations[i] / Steps;
+
+        for (int s = 0; s < Steps; s++) {
+            uint32_t CurrentFreq = StartFreq + (EndFreq - StartFreq) * s / Steps;
+            Divisor = 1193180 / CurrentFreq;
+            OutB(0x42, (uint8_t)(Divisor & 0xFF));
+            OutB(0x42, (uint8_t)((Divisor >> 8) & 0xFF));
+            Sleep(StepDuration);
+        }
+    }
 
     Tmp = InB(0x61);
     OutB(0x61, Tmp & 0xFC);
 }
 
+static const uint32_t Group1Freqs[] = {220, 262, 330};
+static const uint64_t Group1Durations[] = {350, 350, 450};
+
+static const uint32_t Group2Freqs[] = {294, 349, 440};
+static const uint64_t Group2Durations[] = {300, 300, 450};
+
+static const uint32_t Group3Freqs[] = {392, 330};
+static const uint64_t Group3Durations[] = {300, 300};
+
+static const uint32_t Group4Freqs[] = {523};
+static const uint64_t Group4Durations[] = {500};
+
+static const uint32_t Group5Freqs[] = {440, 659, 880};
+static const uint64_t Group5Durations[] = {250, 250, 900};
+
 static void
 PlayStartupChime(void)
 {
-    PlayTone(523, 150);
-    Sleep(60);
+    PlayPhrase(Group1Freqs, Group1Durations, 3);
+    Sleep(150);
 
-    PlayTone(659, 150);
-    Sleep(60);
+    PlayPhrase(Group2Freqs, Group2Durations, 3);
+    Sleep(150);
 
-    PlayTone(784, 200);
-    Sleep(120);
+    PlayPhrase(Group3Freqs, Group3Durations, 2);
+    Sleep(200);
 
-    PlayTone(1047, 500);
+    PlayPhrase(Group4Freqs, Group4Durations, 1);
+    Sleep(250);
+
+    PlayPhrase(Group5Freqs, Group5Durations, 3);
 }
 
 void
