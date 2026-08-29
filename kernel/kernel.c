@@ -199,6 +199,10 @@ kmain(BOOT_INFO *Info)
     uint32_t CursorX = Margin;
     uint32_t CursorY = TextY + FONT_HEIGHT + 40;
 
+    #define MAX_LINES 256
+    static uint32_t LineEndX[MAX_LINES];
+    int CurrentLine = 0;
+
     for (;;) {
         char c = KeyboardGetChar();
 
@@ -211,8 +215,16 @@ kmain(BOOT_INFO *Info)
             if (CursorX > Margin) {
                 CursorX -= FONT_WIDTH;
                 FillRect(CursorX, CursorY, FONT_WIDTH, FONT_HEIGHT, BackgroundColor);
+            } else if (CurrentLine > 0) {
+                CurrentLine--;
+                CursorY -= FONT_HEIGHT + LineSpacing;
+                CursorX = LineEndX[CurrentLine];
             }
         } else if (c == '\n') {
+            if (CurrentLine < MAX_LINES - 1) {
+                LineEndX[CurrentLine] = CursorX;
+                CurrentLine++;
+            }
             CursorX = Margin;
             CursorY += FONT_HEIGHT + LineSpacing;
         } else {
@@ -220,6 +232,10 @@ kmain(BOOT_INFO *Info)
             CursorX += FONT_WIDTH;
 
             if (CursorX + FONT_WIDTH > ScreenWidth - Margin) {
+                if (CurrentLine < MAX_LINES - 1) {
+                    LineEndX[CurrentLine] = CursorX;
+                    CurrentLine++;
+                }
                 CursorX = Margin;
                 CursorY += FONT_HEIGHT + LineSpacing;
             }
