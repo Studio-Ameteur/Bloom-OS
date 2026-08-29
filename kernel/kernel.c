@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include "boot_info.h"
 #include "font8x16.h"
+#include "logo.h"
+#include "idt.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -42,6 +44,21 @@ DrawChar(uint32_t x, uint32_t y, char ch, uint32_t color)
     }
 }
 
+static void
+DrawLogo(uint32_t OffsetX, uint32_t OffsetY)
+{
+    for (uint32_t y = 0; y < LOGO_HEIGHT; y++) {
+        for (uint32_t x = 0; x < LOGO_WIDTH; x++) {
+            uint32_t Pixel = BloomLogo[y * LOGO_WIDTH + x];
+            uint8_t Alpha = (Pixel >> 24) & 0xFF;
+            if (Alpha == 0) {
+                continue;
+            }
+            PutPixel(OffsetX + x, OffsetY + y, Pixel & 0x00FFFFFF);
+        }
+    }
+}
+
 static int
 StrLen(const char *s)
 {
@@ -50,13 +67,6 @@ StrLen(const char *s)
         len++;
     }
     return len;
-}
-
-static void
-Delay(uint64_t count)
-{
-    for (volatile uint64_t i = 0; i < count; i++) {
-    }
 }
 
 static void
@@ -85,36 +95,33 @@ PlayTone(uint32_t frequency, uint64_t duration)
     uint8_t Tmp = InB(0x61);
     OutB(0x61, Tmp | 0x03);
 
-    Delay(duration);
+    Sleep(duration);
 
     Tmp = InB(0x61);
     OutB(0x61, Tmp & 0xFC);
 }
 
 static void
-Rest(uint64_t duration)
-{
-    Delay(duration);
-}
-
-static void
 PlayStartupChime(void)
 {
-    PlayTone(523, 4000000);
-    Rest(1000000);
+    PlayTone(523, 150);
+    Sleep(60);
 
-    PlayTone(659, 4000000);
-    Rest(1000000);
+    PlayTone(659, 150);
+    Sleep(60);
 
-    PlayTone(784, 5000000);
-    Rest(2000000);
+    PlayTone(784, 200);
+    Sleep(120);
 
-    PlayTone(1047, 12000000);
+    PlayTone(1047, 500);
 }
 
 void
 kmain(BOOT_INFO *Info)
 {
+    InitIdt();
+    EnableInterrupts();
+
     FrameBuffer = (volatile uint32_t *)Info->FrameBufferBase;
     ScreenWidth = Info->Width;
     ScreenHeight = Info->Height;
@@ -128,14 +135,20 @@ kmain(BOOT_INFO *Info)
     const char *Message = "Welcome to Bloom-OS";
     int Len = StrLen(Message);
     uint32_t TextWidth = Len * FONT_WIDTH;
-    uint32_t StartX = (ScreenWidth - TextWidth) / 2;
-    uint32_t StartY = (ScreenHeight - FONT_HEIGHT) / 2;
+    uint32_t TextX = (ScreenWidth - TextWidth) / 2;
+    uint32_t TextY = (ScreenHeight - FONT_HEIGHT) / 2;
+
+    uint32_t Gap = 30;
+    uint32_t LogoX = (ScreenWidth - LOGO_WIDTH) / 2;
+    uint32_t LogoY = TextY - Gap - LOGO_HEIGHT;
+
+    DrawLogo(LogoX, LogoY);
 
     PlayStartupChime();
 
     for (int i = 0; i < Len; i++) {
-        DrawChar(StartX + i * FONT_WIDTH, StartY, Message[i], TextColor);
-        Delay(35000000);
+        DrawChar(TextX + i * FONT_WIDTH, TextY, Message[i], TextColor);
+        Sleep(40);
     }
 
     for (;;) {
