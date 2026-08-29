@@ -3,6 +3,7 @@
 #include "font8x16.h"
 #include "logo.h"
 #include "idt.h"
+#include "keyboard.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -55,6 +56,16 @@ DrawLogo(uint32_t OffsetX, uint32_t OffsetY)
                 continue;
             }
             PutPixel(OffsetX + x, OffsetY + y, Pixel & 0x00FFFFFF);
+        }
+    }
+}
+
+static void
+FillRect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color)
+{
+    for (uint32_t row = 0; row < h; row++) {
+        for (uint32_t col = 0; col < w; col++) {
+            PutPixel(x + col, y + row, color);
         }
     }
 }
@@ -151,6 +162,7 @@ void
 kmain(BOOT_INFO *Info)
 {
     InitIdt();
+    InitKeyboard();
     EnableInterrupts();
 
     FrameBuffer = (volatile uint32_t *)Info->FrameBufferBase;
@@ -182,7 +194,35 @@ kmain(BOOT_INFO *Info)
         Sleep(40);
     }
 
+    uint32_t Margin = 20;
+    uint32_t LineSpacing = 4;
+    uint32_t CursorX = Margin;
+    uint32_t CursorY = TextY + FONT_HEIGHT + 40;
+
     for (;;) {
-        __asm__ __volatile__("hlt");
+        char c = KeyboardGetChar();
+
+        if (c == 0) {
+            __asm__ __volatile__("hlt");
+            continue;
+        }
+
+        if (c == '\b') {
+            if (CursorX > Margin) {
+                CursorX -= FONT_WIDTH;
+                FillRect(CursorX, CursorY, FONT_WIDTH, FONT_HEIGHT, BackgroundColor);
+            }
+        } else if (c == '\n') {
+            CursorX = Margin;
+            CursorY += FONT_HEIGHT + LineSpacing;
+        } else {
+            DrawChar(CursorX, CursorY, c, TextColor);
+            CursorX += FONT_WIDTH;
+
+            if (CursorX + FONT_WIDTH > ScreenWidth - Margin) {
+                CursorX = Margin;
+                CursorY += FONT_HEIGHT + LineSpacing;
+            }
+        }
     }
 }
