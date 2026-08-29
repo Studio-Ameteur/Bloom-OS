@@ -11,11 +11,14 @@ idt.o: idt.c idt.h
 keyboard.o: keyboard.c keyboard.h idt.h
 	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c keyboard.c -o keyboard.o
 
-kernel.o: kernel.c boot_info.h font8x16.h logo.h idt.h keyboard.h
+mouse.o: mouse.c mouse.h idt.h
+	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c mouse.c -o mouse.o
+
+kernel.o: kernel.c boot_info.h font8x16.h logo.h idt.h keyboard.h mouse.h
 	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c kernel.c -o kernel.o
 
-kernel.elf: start.o idt.o keyboard.o kernel.o linker.ld
-	ld -T linker.ld -o kernel.elf start.o idt.o keyboard.o kernel.o
+kernel.elf: start.o idt.o keyboard.o mouse.o kernel.o linker.ld
+	ld -T linker.ld -o kernel.elf start.o idt.o keyboard.o mouse.o kernel.o
 
 $(TARGET): kernel.elf
 	objcopy -O binary kernel.elf $(TARGET)
