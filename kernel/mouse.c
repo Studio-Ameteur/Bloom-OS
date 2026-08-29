@@ -92,6 +92,10 @@ MouseIrqHandler(void)
 void
 InitMouse(void)
 {
+    while (InB(0x64) & 0x01) {
+        InB(0x60);
+    }
+
     WaitInputBufferEmpty();
     OutB(0x64, 0xA8);
 
@@ -99,8 +103,8 @@ InitMouse(void)
     OutB(0x64, 0x20);
     WaitOutputBufferFull();
     uint8_t Status = InB(0x60);
-    Status |= 0x02;
-    Status &= ~0x20;
+    Status |= 0x03;
+    Status &= ~0x30;
 
     WaitInputBufferEmpty();
     OutB(0x64, 0x60);
