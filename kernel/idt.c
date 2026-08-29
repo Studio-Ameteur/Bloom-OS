@@ -26,6 +26,7 @@ typedef struct {
 
 static IDT_ENTRY Idt[256];
 static IDT_POINTER IdtPtr;
+static IRQ_HANDLER IrqHandlers[16];
 
 volatile uint64_t TickCount = 0;
 
@@ -33,6 +34,14 @@ static void
 OutB(uint16_t port, uint8_t value)
 {
     __asm__ __volatile__("outb %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static uint8_t
+InB(uint16_t port)
+{
+    uint8_t ret;
+    __asm__ __volatile__("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
 }
 
 static uint16_t
@@ -68,7 +77,7 @@ RemapPic(void)
     OutB(0xA1, 0x02);
     OutB(0x21, 0x01);
     OutB(0xA1, 0x01);
-    OutB(0x21, 0xFE);
+    OutB(0x21, 0xFF);
     OutB(0xA1, 0xFF);
 }
 
@@ -82,14 +91,46 @@ InitPit(uint32_t Frequency)
     OutB(0x40, (uint8_t)((Divisor >> 8) & 0xFF));
 }
 
-__attribute__((interrupt))
 static void
-TimerHandler(INTERRUPT_FRAME *Frame)
+IrqDispatch(int Irq)
 {
-    (void)Frame;
-    TickCount++;
+    if (Irq == 0) {
+        TickCount++;
+    }
+
+    if (IrqHandlers[Irq]) {
+        IrqHandlers[Irq]();
+    }
+
+    if (Irq >= 8) {
+        OutB(0xA0, 0x20);
+    }
     OutB(0x20, 0x20);
 }
+
+#define IRQ_STUB(n) \
+__attribute__((interrupt)) static void Irq##n##Stub(INTERRUPT_FRAME *Frame) \
+{ \
+    (void)Frame; \
+    IrqDispatch(n); \
+}
+
+IRQ_STUB(0)
+IRQ_STUB(1)
+IRQ_STUB(2)
+IRQ_STUB(3)
+IRQ_STUB(4)
+IRQ_STUB(5)
+IRQ_STUB(6)
+IRQ_STUB(7)
+IRQ_STUB(8)
+IRQ_STUB(9)
+IRQ_STUB(10)
+IRQ_STUB(11)
+IRQ_STUB(12)
+IRQ_STUB(13)
+IRQ_STUB(14)
+IRQ_STUB(15)
 
 void
 InitIdt(void)
@@ -100,10 +141,26 @@ InitIdt(void)
         SetGate(i, 0, 0, 0);
     }
 
-    SetGate(32, (void *)TimerHandler, Cs, 0x8E);
+    SetGate(32, (void *)Irq0Stub, Cs, 0x8E);
+    SetGate(33, (void *)Irq1Stub, Cs, 0x8E);
+    SetGate(34, (void *)Irq2Stub, Cs, 0x8E);
+    SetGate(35, (void *)Irq3Stub, Cs, 0x8E);
+    SetGate(36, (void *)Irq4Stub, Cs, 0x8E);
+    SetGate(37, (void *)Irq5Stub, Cs, 0x8E);
+    SetGate(38, (void *)Irq6Stub, Cs, 0x8E);
+    SetGate(39, (void *)Irq7Stub, Cs, 0x8E);
+    SetGate(40, (void *)Irq8Stub, Cs, 0x8E);
+    SetGate(41, (void *)Irq9Stub, Cs, 0x8E);
+    SetGate(42, (void *)Irq10Stub, Cs, 0x8E);
+    SetGate(43, (void *)Irq11Stub, Cs, 0x8E);
+    SetGate(44, (void *)Irq12Stub, Cs, 0x8E);
+    SetGate(45, (void *)Irq13Stub, Cs, 0x8E);
+    SetGate(46, (void *)Irq14Stub, Cs, 0x8E);
+    SetGate(47, (void *)Irq15Stub, Cs, 0x8E);
 
     RemapPic();
     InitPit(1000);
+    UnmaskIrq(0);
 
     IdtPtr.Limit = sizeof(Idt) - 1;
     IdtPtr.Base = (uint64_t)&Idt;
@@ -123,5 +180,29 @@ Sleep(uint64_t Milliseconds)
 
     while (TickCount < Target) {
         __asm__ __volatile__("hlt");
+    }
+}
+
+void
+RegisterIrqHandler(int Irq, IRQ_HANDLER Handler)
+{
+    IrqHandlers[Irq] = Handler;
+}
+
+void
+UnmaskIrq(int Irq)
+{
+    if (Irq < 8) {
+        uint8_t Mask = InB(0x21);
+        Mask &= ~(1 << Irq);
+        OutB(0x21, Mask);
+    } else {
+        uint8_t Mask = InB(0xA1);
+        Mask &= ~(1 << (Irq - 8));
+        OutB(0xA1, Mask);
+
+        Mask = InB(0x21);
+        Mask &= ~(1 << 2);
+        OutB(0x21, Mask);
     }
 }
