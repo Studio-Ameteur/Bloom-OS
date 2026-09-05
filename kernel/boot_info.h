@@ -9,6 +9,10 @@ typedef struct {
     uint64_t Width;
     uint64_t Height;
     uint64_t PixelsPerScanLine;
+    uint64_t MemoryMapBase;
+    uint64_t MemoryMapSize;
+    uint64_t MemoryMapDescriptorSize;
+    uint32_t MemoryMapDescriptorVersion;
 } BOOT_INFO;
 
 #endif
