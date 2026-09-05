@@ -1,32 +1,152 @@
-TARGET = kernel.bin
+#include "pmm.h"
 
-all: $(TARGET)
+#define PAGE_SIZE 4096
+#define EFI_CONVENTIONAL_MEMORY 7
+#define EFI_MEMORY_MAPPED_IO 11
+#define EFI_MEMORY_MAPPED_IO_PORT_SPACE 12
+#define EFI_PAL_CODE 13
 
-start.o: start.asm
-	nasm -f elf64 start.asm -o start.o
+typedef struct {
+    uint32_t Type;
+    uint32_t Pad;
+    uint64_t PhysicalStart;
+    uint64_t VirtualStart;
+    uint64_t NumberOfPages;
+    uint64_t Attribute;
+} EFI_MEM_DESC;
 
-irq_stubs.o: irq_stubs.asm
-	nasm -f elf64 irq_stubs.asm -o irq_stubs.o
+static uint8_t *Bitmap;
+static uint64_t BitmapPages;
+static uint64_t TotalPages;
+static uint64_t FreePages;
 
-idt.o: idt.c idt.h
-	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mgeneral-regs-only -m64 -Wall -c idt.c -o idt.o
+static void
+SetBit(uint64_t Page)
+{
+    Bitmap[Page / 8] |= (uint8_t)(1 << (Page % 8));
+}
 
-keyboard.o: keyboard.c keyboard.h idt.h
-	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c keyboard.c -o keyboard.o
+static void
+ClearBit(uint64_t Page)
+{
+    Bitmap[Page / 8] &= (uint8_t)~(1 << (Page % 8));
+}
 
-mouse.o: mouse.c mouse.h idt.h
-	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c mouse.c -o mouse.o
+static int
+TestBit(uint64_t Page)
+{
+    return (Bitmap[Page / 8] >> (Page % 8)) & 1;
+}
 
-kernel.o: kernel.c boot_info.h font8x16.h logo.h idt.h keyboard.h mouse.h
-	gcc -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -m64 -Wall -c kernel.c -o kernel.o
+static int
+IsBackedRam(uint32_t Type)
+{
+    switch (Type) {
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    case 9:
+    case 10:
+    case 14:
+        return 1;
+    default:
+        return 0;
+    }
+}
 
-kernel.elf: start.o irq_stubs.o idt.o keyboard.o mouse.o kernel.o linker.ld
-	ld -T linker.ld -o kernel.elf start.o irq_stubs.o idt.o keyboard.o mouse.o kernel.o
+void
+InitPmm(BOOT_INFO *Info)
+{
+    uint64_t HighestAddress = 0;
+    uint64_t EntryCount = Info->MemoryMapSize / Info->MemoryMapDescriptorSize;
+    uint8_t *MapBytes = (uint8_t *)(uintptr_t)Info->MemoryMapBase;
 
-$(TARGET): kernel.elf
-	objcopy -O binary kernel.elf $(TARGET)
+    for (uint64_t i = 0; i < EntryCount; i++) {
+        EFI_MEM_DESC *Desc = (EFI_MEM_DESC *)(MapBytes + i * Info->MemoryMapDescriptorSize);
+        if (!IsBackedRam(Desc->Type)) {
+            continue;
+        }
+        uint64_t End = Desc->PhysicalStart + Desc->NumberOfPages * PAGE_SIZE;
+        if (End > HighestAddress) {
+            HighestAddress = End;
+        }
+    }
 
-clean:
-	rm -f *.o kernel.elf $(TARGET)
+    TotalPages = HighestAddress / PAGE_SIZE;
+    uint64_t BitmapSize = (TotalPages + 7) / 8;
+    BitmapPages = (BitmapSize + PAGE_SIZE - 1) / PAGE_SIZE;
 
-.PHONY: all clean
+    uint64_t BitmapPhysAddr = 0;
+    for (uint64_t i = 0; i < EntryCount; i++) {
+        EFI_MEM_DESC *Desc = (EFI_MEM_DESC *)(MapBytes + i * Info->MemoryMapDescriptorSize);
+        if (Desc->Type == EFI_CONVENTIONAL_MEMORY && Desc->NumberOfPages >= BitmapPages) {
+            BitmapPhysAddr = Desc->PhysicalStart;
+            break;
+        }
+    }
+
+    Bitmap = (uint8_t *)(uintptr_t)BitmapPhysAddr;
+
+    for (uint64_t i = 0; i < TotalPages; i++) {
+        SetBit(i);
+    }
+
+    FreePages = 0;
+
+    for (uint64_t i = 0; i < EntryCount; i++) {
+        EFI_MEM_DESC *Desc = (EFI_MEM_DESC *)(MapBytes + i * Info->MemoryMapDescriptorSize);
+        if (Desc->Type != EFI_CONVENTIONAL_MEMORY) {
+            continue;
+        }
+        uint64_t StartPage = Desc->PhysicalStart / PAGE_SIZE;
+        for (uint64_t p = 0; p < Desc->NumberOfPages; p++) {
+            ClearBit(StartPage + p);
+            FreePages++;
+        }
+    }
+
+    uint64_t BitmapStartPage = BitmapPhysAddr / PAGE_SIZE;
+    for (uint64_t p = 0; p < BitmapPages; p++) {
+        SetBit(BitmapStartPage + p);
+        FreePages--;
+    }
+}
+
+void *
+AllocPage(void)
+{
+    for (uint64_t i = 0; i < TotalPages; i++) {
+        if (!TestBit(i)) {
+            SetBit(i);
+            FreePages--;
+            return (void *)(uintptr_t)(i * PAGE_SIZE);
+        }
+    }
+    return (void *)0;
+}
+
+void
+FreePage(void *Addr)
+{
+    uint64_t Page = (uint64_t)(uintptr_t)Addr / PAGE_SIZE;
+    if (TestBit(Page)) {
+        ClearBit(Page);
+        FreePages++;
+    }
+}
+
+uint64_t
+GetFreePageCount(void)
+{
+    return FreePages;
+}
+
+uint64_t
+GetTotalPageCount(void)
+{
+    return TotalPages;
+}
