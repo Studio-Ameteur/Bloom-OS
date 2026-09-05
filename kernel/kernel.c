@@ -5,6 +5,7 @@
 #include "idt.h"
 #include "keyboard.h"
 #include "mouse.h"
+#include "pmm.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -120,6 +121,35 @@ RestoreUnderCursor(uint32_t x, uint32_t y)
     }
 }
 
+static void
+DrawString(uint32_t x, uint32_t y, const char *s, uint32_t color)
+{
+    uint32_t CurX = x;
+    for (int i = 0; s[i]; i++) {
+        DrawChar(CurX, y, s[i], color);
+        CurX += FONT_WIDTH;
+    }
+}
+
+static void
+DrawUInt64(uint32_t x, uint32_t y, uint64_t value, uint32_t color)
+{
+    char Buffer[21];
+    int Pos = 20;
+    Buffer[Pos] = 0;
+
+    if (value == 0) {
+        Buffer[--Pos] = '0';
+    } else {
+        while (value > 0) {
+            Buffer[--Pos] = (char)('0' + (value % 10));
+            value /= 10;
+        }
+    }
+
+    DrawString(x, y, &Buffer[Pos], color);
+}
+
 static int
 StrLen(const char *s)
 {
@@ -225,6 +255,7 @@ kmain(BOOT_INFO *Info)
     InitMouse();
     FillScreen(0x0000FF00);
     EnableInterrupts();
+    InitPmm(Info);
 
     FillScreen(0x000000FF);
 
@@ -244,6 +275,11 @@ kmain(BOOT_INFO *Info)
     uint32_t LogoY = TextY - Gap - LOGO_HEIGHT;
 
     DrawLogo(LogoX, LogoY);
+
+    DrawString(20, 10, "Free pages: ", TextColor);
+    DrawUInt64(20 + 12 * FONT_WIDTH, 10, GetFreePageCount(), TextColor);
+    DrawString(20 + 20 * FONT_WIDTH, 10, "/", TextColor);
+    DrawUInt64(20 + 21 * FONT_WIDTH, 10, GetTotalPageCount(), TextColor);
 
     PlayStartupChime();
 
