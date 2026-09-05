@@ -67,6 +67,16 @@ SetGate(int Num, void *Handler, uint16_t Selector, uint8_t TypeAttr)
 }
 
 static void
+DisableLocalApic(void)
+{
+    uint32_t Low, High;
+
+    __asm__ __volatile__("rdmsr" : "=a"(Low), "=d"(High) : "c"(0x1B));
+    Low &= ~(1u << 11);
+    __asm__ __volatile__("wrmsr" : : "c"(0x1B), "a"(Low), "d"(High));
+}
+
+static void
 ForcePicMode(void)
 {
     OutB(0x22, 0x70);
@@ -76,6 +86,7 @@ ForcePicMode(void)
 static void
 RemapPic(void)
 {
+    DisableLocalApic();
     ForcePicMode();
 
     OutB(0x20, 0x11);
