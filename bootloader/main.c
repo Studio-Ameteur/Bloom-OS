@@ -249,6 +249,11 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
         goto hang;
     }
 
+    Info.MemoryMapBase = (UINT64)(UINTN)MemMap;
+    Info.MemoryMapSize = (UINT64)MemMapSize;
+    Info.MemoryMapDescriptorSize = (UINT64)DescriptorSize;
+    Info.MemoryMapDescriptorVersion = DescriptorVersion;
+
     KERNEL_ENTRY KernelMain = (KERNEL_ENTRY)(UINTN)KERNEL_LOAD_ADDRESS;
     KernelMain(&Info);
 
