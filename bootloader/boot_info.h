@@ -7,6 +7,10 @@ typedef struct {
     UINT64 Width;
     UINT64 Height;
     UINT64 PixelsPerScanLine;
+    UINT64 MemoryMapBase;
+    UINT64 MemoryMapSize;
+    UINT64 MemoryMapDescriptorSize;
+    UINT32 MemoryMapDescriptorVersion;
 } BOOT_INFO;
 
 #define KERNEL_LOAD_ADDRESS 0x100000
