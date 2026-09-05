@@ -211,15 +211,23 @@ PlayStartupChime(void)
 void
 kmain(BOOT_INFO *Info)
 {
-    InitIdt();
-    InitKeyboard();
-    InitMouse();
-    EnableInterrupts();
-
     FrameBuffer = (volatile uint32_t *)Info->FrameBufferBase;
     ScreenWidth = Info->Width;
     ScreenHeight = Info->Height;
     Stride = Info->PixelsPerScanLine;
+
+    FillScreen(0x00FF0000);
+
+    InitIdt();
+    FillScreen(0x00FF8000);
+
+    /* --- DIAG: keyboard/mouse skipped, timer-only test --- */
+    FillScreen(0x00FFFF00);
+    FillScreen(0x0000FF00);
+
+    EnableInterrupts();
+
+    FillScreen(0x000000FF);
 
     uint32_t BackgroundColor = 0x00201040;
     uint32_t TextColor = 0x00E0D0FF;
