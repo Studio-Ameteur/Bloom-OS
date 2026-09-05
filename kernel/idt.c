@@ -67,8 +67,17 @@ SetGate(int Num, void *Handler, uint16_t Selector, uint8_t TypeAttr)
 }
 
 static void
+ForcePicMode(void)
+{
+    OutB(0x22, 0x70);
+    OutB(0x23, 0x01);
+}
+
+static void
 RemapPic(void)
 {
+    ForcePicMode();
+
     OutB(0x20, 0x11);
     OutB(0xA0, 0x11);
     OutB(0x21, 0x20);
@@ -91,8 +100,8 @@ InitPit(uint32_t Frequency)
     OutB(0x40, (uint8_t)((Divisor >> 8) & 0xFF));
 }
 
-static void
-IrqDispatch(int Irq)
+void
+IrqDispatchC(int Irq)
 {
     if (Irq == 0) {
         TickCount++;
@@ -108,29 +117,22 @@ IrqDispatch(int Irq)
     OutB(0x20, 0x20);
 }
 
-#define IRQ_STUB(n) \
-__attribute__((interrupt)) static void Irq##n##Stub(INTERRUPT_FRAME *Frame) \
-{ \
-    (void)Frame; \
-    IrqDispatch(n); \
-}
-
-IRQ_STUB(0)
-IRQ_STUB(1)
-IRQ_STUB(2)
-IRQ_STUB(3)
-IRQ_STUB(4)
-IRQ_STUB(5)
-IRQ_STUB(6)
-IRQ_STUB(7)
-IRQ_STUB(8)
-IRQ_STUB(9)
-IRQ_STUB(10)
-IRQ_STUB(11)
-IRQ_STUB(12)
-IRQ_STUB(13)
-IRQ_STUB(14)
-IRQ_STUB(15)
+extern void Irq0Stub(void);
+extern void Irq1Stub(void);
+extern void Irq2Stub(void);
+extern void Irq3Stub(void);
+extern void Irq4Stub(void);
+extern void Irq5Stub(void);
+extern void Irq6Stub(void);
+extern void Irq7Stub(void);
+extern void Irq8Stub(void);
+extern void Irq9Stub(void);
+extern void Irq10Stub(void);
+extern void Irq11Stub(void);
+extern void Irq12Stub(void);
+extern void Irq13Stub(void);
+extern void Irq14Stub(void);
+extern void Irq15Stub(void);
 
 void
 InitIdt(void)
