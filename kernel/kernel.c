@@ -220,11 +220,10 @@ kmain(BOOT_INFO *Info)
 
     InitIdt();
     FillScreen(0x00FF8000);
-
-    /* --- DIAG: keyboard/mouse skipped, timer-only test --- */
+    InitKeyboard();
     FillScreen(0x00FFFF00);
+    InitMouse();
     FillScreen(0x0000FF00);
-
     EnableInterrupts();
 
     FillScreen(0x000000FF);
