@@ -156,7 +156,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 
     InitializeLib(ImageHandle, SystemTable);
 
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+    uefi_call_wrapper(SystemTable->ConOut->ClearScreen, 1, SystemTable->ConOut);
     Print(L"Bloom-OS bootloader\r\n");
     Print(L"UEFI firmware initialized. Boot Services active.\r\n");
 
@@ -212,22 +212,41 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     UINTN DescriptorSize = 0;
     UINT32 DescriptorVersion = 0;
 
-    uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
-    MemMapSize += DescriptorSize * 4;
-    uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, MemMapSize, (void **)&MemMap);
-    Status = uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
-    if (EFI_ERROR(Status)) {
-        Print(L"GetMemoryMap failed: %r\r\n", Status);
-        goto hang;
-    }
+    const INT32 MaxExitAttempts = 5;
+    INT32 Attempt;
 
-    Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
-    if (EFI_ERROR(Status)) {
-        uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
-        Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
+    for (Attempt = 0; Attempt < MaxExitAttempts; Attempt++) {
+        MemMapSize = 0;
+        Status = uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+
+        MemMapSize += DescriptorSize * 8;
+
+        if (MemMap != NULL) {
+            uefi_call_wrapper(BS->FreePool, 1, MemMap);
+            MemMap = NULL;
+        }
+
+        Status = uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, MemMapSize, (void **)&MemMap);
         if (EFI_ERROR(Status)) {
+            Print(L"AllocatePool for memory map failed: %r\r\n", Status);
             goto hang;
         }
+
+        Status = uefi_call_wrapper(BS->GetMemoryMap, 5, &MemMapSize, MemMap, &MapKey, &DescriptorSize, &DescriptorVersion);
+        if (EFI_ERROR(Status)) {
+            Print(L"GetMemoryMap failed (attempt %d): %r\r\n", Attempt, Status);
+            continue;
+        }
+
+        Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
+        if (!EFI_ERROR(Status)) {
+            break;
+        }
+    }
+
+    if (EFI_ERROR(Status)) {
+        Print(L"ExitBootServices failed after %d attempts: %r\r\n", MaxExitAttempts, Status);
+        goto hang;
     }
 
     KERNEL_ENTRY KernelMain = (KERNEL_ENTRY)(UINTN)KERNEL_LOAD_ADDRESS;
