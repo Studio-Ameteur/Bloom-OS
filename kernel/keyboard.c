@@ -103,6 +103,13 @@ PushChar(char c)
 static void
 KeyboardIrqHandler(void)
 {
+    uint8_t Status = InB(0x64);
+
+    if (Status & 0x20) {
+        InB(0x60);
+        return;
+    }
+
     uint8_t Scancode = InB(0x60);
 
     if (Scancode == 0xE0) {
@@ -184,6 +191,10 @@ KeyboardIrqHandler(void)
 void
 InitKeyboard(void)
 {
+    while (InB(0x64) & 0x01) {
+        InB(0x60);
+    }
+
     RegisterIrqHandler(1, KeyboardIrqHandler);
     UnmaskIrq(1);
     UpdateLeds();
