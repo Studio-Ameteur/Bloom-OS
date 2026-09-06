@@ -7,6 +7,7 @@
 #include "mouse.h"
 #include "pmm.h"
 #include "pci.h"
+#include "ahci.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -287,6 +288,22 @@ kmain(BOOT_INFO *Info)
     if (Ahci.Found) {
         DrawString(20, 30, "AHCI found, ABAR: ", TextColor);
         DrawUInt64(20 + 18 * FONT_WIDTH, 30, Ahci.Abar, TextColor);
+
+        if (AhciInit(Ahci.Abar)) {
+            uint8_t *SectorBuffer = (uint8_t *)AllocPage();
+
+            if (AhciReadSectors(0, 1, SectorBuffer)) {
+                if (SectorBuffer[510] == 0x55 && SectorBuffer[511] == 0xAA) {
+                    DrawString(20, 50, "Disk read OK, boot sig valid", TextColor);
+                } else {
+                    DrawString(20, 50, "Disk read OK, bad boot sig", TextColor);
+                }
+            } else {
+                DrawString(20, 50, "Disk read failed", TextColor);
+            }
+        } else {
+            DrawString(20, 50, "AHCI port init failed", TextColor);
+        }
     } else {
         DrawString(20, 30, "AHCI not found", TextColor);
     }
