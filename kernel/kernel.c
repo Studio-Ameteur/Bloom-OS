@@ -6,6 +6,7 @@
 #include "keyboard.h"
 #include "mouse.h"
 #include "pmm.h"
+#include "pci.h"
 
 static volatile uint32_t *FrameBuffer;
 static uint64_t ScreenWidth;
@@ -280,6 +281,15 @@ kmain(BOOT_INFO *Info)
     DrawUInt64(20 + 12 * FONT_WIDTH, 10, GetFreePageCount(), TextColor);
     DrawString(20 + 20 * FONT_WIDTH, 10, "/", TextColor);
     DrawUInt64(20 + 21 * FONT_WIDTH, 10, GetTotalPageCount(), TextColor);
+
+    AHCI_LOCATION Ahci = FindAhciController();
+
+    if (Ahci.Found) {
+        DrawString(20, 30, "AHCI found, ABAR: ", TextColor);
+        DrawUInt64(20 + 18 * FONT_WIDTH, 30, Ahci.Abar, TextColor);
+    } else {
+        DrawString(20, 30, "AHCI not found", TextColor);
+    }
 
     PlayStartupChime();
 
