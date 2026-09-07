@@ -322,6 +322,15 @@ kmain(BOOT_INFO *Info)
         DrawString(20, 30, "AHCI not found", TextColor);
     }
 
+    HDA_LOCATION Hda = FindHdaController();
+
+    if (Hda.Found) {
+        DrawString(20, 90, "HDA found, BAR0: ", TextColor);
+        DrawUInt64(20 + 17 * FONT_WIDTH, 90, Hda.Bar0, TextColor);
+    } else {
+        DrawString(20, 90, "HDA not found", TextColor);
+    }
+
     PlayStartupChime();
 
     for (int i = 0; i < Len; i++) {
